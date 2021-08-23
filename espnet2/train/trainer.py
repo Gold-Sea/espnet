@@ -60,6 +60,12 @@ try:
 except ImportError:
     fairscale = None
 
+f = open('/root/log/espnet.log', 'w')
+def sync_e():
+    e = torch.cuda.Event()
+    e.record()
+    e.synchronize()
+
 
 @dataclasses.dataclass
 class TrainerOptions:
@@ -455,7 +461,9 @@ class Trainer:
         distributed_option: DistributedOption,
     ) -> bool:
         assert check_argument_types()
-
+        global now
+        now = time.time()
+        print("#time throughput", file=f)
         grad_noise = options.grad_noise
         accum_grad = options.accum_grad
         grad_clip = options.grad_clip
@@ -483,7 +491,11 @@ class Trainer:
             reporter.measure_iter_time(iterator, "iter_time"), 1
         ):
             assert isinstance(batch, dict), type(batch)
-
+            sync_e()
+            last = now
+            now = time.time()
+            duration = now - last
+            print('%lf %lf' % (now, 1 / duration), file=f)
             if distributed:
                 torch.distributed.all_reduce(iterator_stop, ReduceOp.SUM)
                 if iterator_stop > 0:
@@ -685,6 +697,7 @@ class Trainer:
         iterator_stop = torch.tensor(0).to("cuda" if ngpu > 0 else "cpu")
         for (_, batch) in iterator:
             assert isinstance(batch, dict), type(batch)
+            print("validate one iter")
             if distributed:
                 torch.distributed.all_reduce(iterator_stop, ReduceOp.SUM)
                 if iterator_stop > 0:
